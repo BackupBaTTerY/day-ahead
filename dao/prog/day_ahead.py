@@ -49,6 +49,88 @@ class DaCalc(DaBase):
         self.machines = self.config.machines
         # self.start_logging()
 
+    @staticmethod
+    def _format_horizon_timestamp(value: dt.datetime | None) -> str:
+        if value is None:
+            return "-"
+        return value.strftime("%d-%m-%Y %H:%M")
+
+    def _log_available_input_horizons(
+        self,
+        *,
+        start: dt.datetime,
+        price_data: pd.DataFrame,
+        prog_data: pd.DataFrame,
+    ) -> None:
+        agg_func = "avg" if self.interval == "1hour" else None
+        official_end = None
+        extension_end = None
+
+        df_official = self.db_da.get_column_data(
+            "values", "da", start=start, end=None, agg_func=agg_func
+        )
+        if len(df_official) > 0:
+            official_end = pd.to_datetime(df_official["time"]).iloc[-1].to_pydatetime()
+
+        ext_provider = str(
+            getattr(self.prices_options, "forecast_extension_provider", "none") or "none"
+        ).strip().lower()
+        ext_hours = self.prices._forecast_extension_hours(
+            lambda eid: self.get_state(eid).state
+        )
+        if ext_provider != "none" and ext_hours > 0:
+            df_extension = self.db_da.get_column_data(
+                "values", "da_ext", start=start, end=None, agg_func=agg_func
+            )
+            if len(df_extension) > 0:
+                extension_end = pd.to_datetime(
+                    df_extension["time"]
+                ).iloc[-1].to_pydatetime()
+
+        price_end = None
+        meteo_end = None
+        if len(price_data) > 0:
+            price_end = pd.to_datetime(price_data["time"]).iloc[-1].to_pydatetime()
+        if len(prog_data) > 0:
+            meteo_end = pd.to_datetime(prog_data["tijd"]).iloc[-1].to_pydatetime()
+
+        optimization_end = None
+        if price_end is not None and meteo_end is not None:
+            optimization_end = min(price_end, meteo_end)
+        else:
+            optimization_end = price_end or meteo_end
+
+        official_source = str(
+            getattr(self.prices_options, "source_day_ahead", "day_ahead") or "day_ahead"
+        ).strip().lower()
+        meteo_source = str(
+            getattr(self.config, "meteoserver_model", None) or getattr(self.meteo, "meteoserver_model", "meteo")
+        ).strip().lower()
+
+        logging.info("Beschikbare data:")
+        logging.info(
+            "  - Bron <%s> tot: %s",
+            official_source,
+            self._format_horizon_timestamp(official_end),
+        )
+        if extension_end is not None and (
+            official_end is None or extension_end > official_end
+        ):
+            logging.info(
+                "  - Extensie <%s> tot: %s",
+                ext_provider,
+                self._format_horizon_timestamp(extension_end),
+            )
+        logging.info(
+            "  - Meteo <%s> tot: %s",
+            meteo_source,
+            self._format_horizon_timestamp(meteo_end),
+        )
+        logging.info(
+            "Optimalisatie voor de periode tot en met: %s",
+            self._format_horizon_timestamp(optimization_end),
+        )
+
     def calc_optimum(
         self,
             _start_dt: dt.datetime | None = None,
@@ -133,6 +215,11 @@ class DaCalc(DaBase):
         prog_data.index = pd.to_datetime(prog_data["tijd"])
         while len(prog_data) > 0 and prog_data.iloc[0]["tijd"] < start_interval_dt:
             prog_data = prog_data.iloc[1:]
+        self._log_available_input_horizons(
+            start=dt.datetime.fromtimestamp(start_hour),
+            price_data=price_data,
+            prog_data=prog_data,
+        )
         u_data = len(prog_data)
         u_prices = len(price_data)
         if self.interval == "15min":

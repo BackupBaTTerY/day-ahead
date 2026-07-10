@@ -45,7 +45,7 @@ class PricingConfig(BaseModel):
         alias="forecast extension provider",
         description="Optional provider for extending the day-ahead horizon with forecast data",
         json_schema_extra={
-            "x-help": "Optional provider that extends the imported official day-ahead horizon with forecast prices. The extension never replaces already imported official prices.",
+            "x-help": "Optional provider that extends the imported official day-ahead horizon with forecast prices. The extension never replaces already imported official prices, and it does not automatically extend the weather horizon used by optimization.",
             "x-ui-section": "Prices",
         }
     )
@@ -54,7 +54,7 @@ class PricingConfig(BaseModel):
         alias="forecast extension hours",
         description="How many additional hours should be appended beyond the official day-ahead horizon",
         json_schema_extra={
-            "x-help": "Number of hours to extend beyond the imported official day-ahead horizon. Supports either a fixed integer or a Home Assistant entity. DAO translates the resolved value into the provider-specific URL parameter.",
+            "x-help": "Number of hours to extend beyond the imported official day-ahead horizon. Supports either a fixed integer or a Home Assistant entity. DAO translates the resolved value into the provider-specific URL parameter. The effective optimization horizon is still limited by the shortest required input horizon, usually prices plus weather data.",
             "x-ui-section": "Prices",
             "x-validation-hint": "Integer or HA entity, effective value between 0 and 168"
         }
@@ -82,7 +82,7 @@ class PricingConfig(BaseModel):
         alias="energypriceforecast-extension-api-key",
         description="Energy Price Forecast EU extension API key (can use !secret)",
         json_schema_extra={
-            "x-help": "Optional API key for the Energy Price Forecast EU extension feed. If set, DAO sends it as an Authorization Bearer token. Use !secret for security.",
+            "x-help": "Optional API key for the Energy Price Forecast EU extension feed. If set, DAO sends it as an Authorization Bearer token. Use !secret for security. A key can unlock a larger forecast horizon at the provider, but DAO still remains limited by the shortest required optimization input horizon.",
             "x-ui-section": "Prices",
             "x-validation-hint": "Use !secret for API tokens",
             "x-ui-rules": {
